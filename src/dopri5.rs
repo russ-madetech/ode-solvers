@@ -313,16 +313,14 @@ where
             k[1] = k[6].clone();
             self.stats.num_eval += 6;
 
-            // Prepare dense output
-            if self.out_type == OutputType::Dense {
-                self.rcont[4] = (&k[0] * dopri54::d::<T>(1)
-                    + &k[2] * dopri54::d::<T>(3)
-                    + &k[3] * dopri54::d::<T>(4)
-                    + &k[4] * dopri54::d::<T>(5)
-                    + &k[5] * dopri54::d::<T>(6)
-                    + &k[1] * dopri54::d::<T>(7))
-                    * h;
-            }
+            // Always prepare dense output
+            self.rcont[4] = (&k[0] * dopri54::d::<T>(1)
+                + &k[2] * dopri54::d::<T>(3)
+                + &k[3] * dopri54::d::<T>(4)
+                + &k[4] * dopri54::d::<T>(5)
+                + &k[5] * dopri54::d::<T>(6)
+                + &k[1] * dopri54::d::<T>(7))
+                * h;
 
             // Compute error estimate
             k[3] = (&k[0] * dopri54::e::<T>(1)
@@ -375,17 +373,15 @@ where
                     }
                 }
 
-                // Prepare dense output
-                if self.out_type == OutputType::Dense {
-                    let h = self.h;
+                // Always prepare dense output
+                let h = self.h;
 
-                    let ydiff = &y_next - &self.y;
-                    let bspl = &k[0] * h - &ydiff;
-                    self.rcont[0] = self.y.clone();
-                    self.rcont[1] = ydiff.clone();
-                    self.rcont[2] = bspl.clone();
-                    self.rcont[3] = -&k[1] * h + ydiff - bspl;
-                }
+                let ydiff = &y_next - &self.y;
+                let bspl = &k[0] * h - &ydiff;
+                self.rcont[0] = self.y.clone();
+                self.rcont[1] = ydiff.clone();
+                self.rcont[2] = bspl.clone();
+                self.rcont[3] = -&k[1] * h + ydiff - bspl;
 
                 k[0] = k[1].clone();
                 self.y = y_next.clone();
@@ -452,6 +448,26 @@ where
     /// Getter for the results type, a pair of independent and dependent variables
     pub fn results(&self) -> &SolverResult<T, OVector<T, D>> {
         &self.results
+    }
+
+    pub fn dense_output_for_last_step(&self, x: T) -> OVector<T, D> {
+
+        // From Scipy:
+        // 4. A solver must implement a private method `_dense_output_impl(self)`,
+        // which returns a `DenseOutput` object covering the last successful
+        // step.
+        
+        // what % of the way is x from self.x_old to self.x
+        let theta = (x - self.x_old) / (self.x - self.x_old);
+        let theta1 = T::one() - theta;
+        let y_out = &self.rcont[0]
+            + (&self.rcont[1]
+                + (&self.rcont[2]
+                    + (&self.rcont[3] + &self.rcont[4] * theta1) * theta)
+                    * theta1)
+                * theta;
+
+        y_out
     }
 }
 
